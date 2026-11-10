@@ -22,7 +22,7 @@
 #include <reapi>
 
 #define PLUGIN_NAME "KGB Zombie Infection"
-#define PLUGIN_VERSION "0.1.0"
+#define PLUGIN_VERSION "0.1.1"
 #define PLUGIN_AUTHOR "KGB Hosting"
 #define TASK_TICK 72100
 
@@ -73,7 +73,8 @@ public plugin_init()
     register_clcmd("rebuy", "command_block_buy")
     register_clcmd("cl_autobuy", "command_block_buy")
     register_clcmd("cl_rebuy", "command_block_buy")
-    register_clcmd("jointeam", "command_jointeam")
+    // Direct jointeam, VGUI and legacy menuselect all reach this engine hook.
+    RegisterHookChain(RG_HandleMenu_ChooseTeam, "on_choose_team_pre", false)
 
     g_max_players = get_maxplayers()
     g_hud = CreateHudSyncObj()
@@ -321,16 +322,15 @@ public command_block_buy(id)
     return PLUGIN_HANDLED
 }
 
-public command_jointeam(id)
+public on_choose_team_pre(id, MenuChooseTeam:slot)
 {
-    new argument[8]
-    read_argv(1, argument, charsmax(argument))
-    if (g_phase == INFECTED && is_participant(id) && str_to_num(argument) != 6)
+    if (g_phase == INFECTED && is_participant(id) && slot != MenuChoose_Spec)
     {
         client_print(id, print_chat, "Use /zombie for the rules. Team changes resume next round; you can still spectate.")
-        return PLUGIN_HANDLED
+        SetHookChainReturn(ATYPE_BOOL, false)
+        return HC_SUPERCEDE
     }
-    return PLUGIN_CONTINUE
+    return HC_CONTINUE
 }
 
 public command_player_status(id)

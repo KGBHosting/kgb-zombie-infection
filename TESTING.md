@@ -1,6 +1,6 @@
 # Development verification
 
-Version 0.1.0 is an explicitly development-only candidate. Do not advertise it
+Version 0.1.1 is an explicitly development-only candidate. Do not advertise it
 as production-ready until the live gates below have evidence.
 
 ## Local gates
@@ -17,6 +17,12 @@ is an explicitly labeled test double; it does not execute Pawn or emulate
 ReHLDS, and is not gameplay evidence. Compilation on AMXX 1.9 and 1.10 proves
 syntax/native declaration compatibility only. Two clean builds prove the
 release artifact can be reproduced from the checked-in source and pinned tools.
+
+The team-choice regression checks evaluate the actual Pawn guard's restricted
+boolean expression across 80 phase/participant/menu-choice combinations, with an
+explicit test-only participant stub. Separate source contracts require the shared
+engine pre-hook and its false BOOL/supercede return. These 16 total checks catch
+the former command-only lock regression without claiming to exercise engine menus.
 
 ## Required development server + real client gates
 
@@ -50,7 +56,12 @@ unrelated player names from evidence.
 8. Repeat core loop on `cs_office` (hostages) and an officially provisioned VIP
    map if supported; native objectives must never end an infection round.
 9. Verify `/zombie`, status HUD, allowed spectating, blocked active team changes,
-   admin permission checks and active-only `amx_zi_infect`. Inspect AMXX/runtime
+   admin permission checks and active-only `amx_zi_infect`. During infection,
+   test direct `jointeam 1/2/5`, VGUI team choices, and legacy `_vgui_menus 0` ->
+   `chooseteam` -> `menuselect 1/2/5`; all must preserve the active role/team.
+   Spectator choice 6 must remain allowed in each path; spectators/late joins
+   can join and become zombies. Repeat choices during preparation and after the
+   round ends, when the plugin must allow normal engine handling. Inspect AMXX/runtime
    logs after several rounds and a map change; no runtime/native errors.
 10. Reinstall a different managed mode and confirm the infection plugin and
     round/ammo/team/respawn configuration are removed/restored correctly.

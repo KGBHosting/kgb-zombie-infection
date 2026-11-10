@@ -6,6 +6,7 @@ It describes expected outcomes, does not execute Pawn and does not emulate ReHLD
 """
 from __future__ import annotations
 
+import ast
 import itertools
 import pathlib
 import re
@@ -64,6 +65,36 @@ def function_body(name: str) -> str:
     return SOURCE[match.end():cursor - 1]
 
 
+def engine_team_choice_blocked(phase: str, participant: bool, choice: int) -> bool:
+    """Evaluate the real Pawn guard's boolean expression, not a copied policy.
+
+    Only equality, AND and the is_participant TEST DOUBLE are admitted. This
+    checks the production predicate's decision table, not engine dispatch.
+    """
+    body = function_body("on_choose_team_pre")
+    match = re.search(r"\bif\s*\(", body)
+    if match is None:
+        raise AssertionError("Engine team-choice guard has no condition")
+    depth, cursor = 1, match.end()
+    while depth:
+        if body[cursor] == "(": depth += 1
+        elif body[cursor] == ")": depth -= 1
+        cursor += 1
+    predicate = body[match.end():cursor - 1].replace("&&", " and ")
+    tree = ast.parse(predicate, mode="eval")
+    allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Compare, ast.Eq, ast.NotEq, ast.Name, ast.Load, ast.Call)
+    if any(not isinstance(node, allowed) for node in ast.walk(tree)):
+        raise AssertionError("Unsupported expression in actual Pawn team-choice guard")
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    if names != {"g_phase", "INFECTED", "is_participant", "id", "slot", "MenuChoose_Spec"}:
+        raise AssertionError("Unexpected names in actual Pawn team-choice guard")
+    return bool(eval(compile(tree, "<Pawn team-choice guard>", "eval"), {"__builtins__": {}}, {
+        "g_phase": phase, "INFECTED": "infected", "id": 1,
+        "is_participant": lambda _: participant,  # Explicit TEST DOUBLE, tests only.
+        "slot": choice, "MenuChoose_Spec": 6,
+    }))
+
+
 class LifecycleSpecificationTests(unittest.TestCase):
     def infected(self) -> RoundSpecification:
         spec = RoundSpecification()
@@ -120,6 +151,29 @@ class LifecycleSpecificationTests(unittest.TestCase):
 
 
 class PawnSafetyContractTests(unittest.TestCase):
+    def test_actual_team_choice_predicate_all_phases_roles_and_menu_slots(self) -> None:
+        for phase, participant, choice in itertools.product(
+            ("waiting", "preparing", "infected", "ending"), (False, True), (-1, 0, 1, 2, 3, 4, 5, 6, 7, 10)
+        ):
+            with self.subTest(phase=phase, participant=participant, choice=choice):
+                # Independent requirement: active participants may spectate;
+                # neither T/CT/VIP/autoselect nor malformed choices may switch them.
+                expected = phase == "infected" and participant and choice != 6
+                self.assertEqual(expected, engine_team_choice_blocked(phase, participant, choice))
+
+    def test_team_lock_hooks_shared_engine_path_and_returns_false(self) -> None:
+        init = function_body("plugin_init")
+        self.assertIn('RegisterHookChain(RG_HandleMenu_ChooseTeam, "on_choose_team_pre", false)', init)
+        self.assertNotIn('register_clcmd("jointeam"', init)
+        self.assertNotIn("public command_jointeam(", SOURCE)
+        body = function_body("on_choose_team_pre")
+        self.assertIn("slot != MenuChoose_Spec", body)
+        self.assertIn("SetHookChainReturn(ATYPE_BOOL, false)", body)
+        self.assertIn("return HC_SUPERCEDE", body)
+        self.assertIn("return HC_CONTINUE", body)
+        self.assertLess(body.index("SetHookChainReturn(ATYPE_BOOL, false)"), body.index("return HC_SUPERCEDE"))
+        self.assertLess(body.index("return HC_SUPERCEDE"), body.index("return HC_CONTINUE"))
+
     def test_only_one_permanent_clock_no_player_or_round_tasks(self) -> None:
         self.assertEqual(1, SOURCE.count("set_task("))
         self.assertIn('set_task(1.0, "round_tick", TASK_TICK', function_body("plugin_cfg"))

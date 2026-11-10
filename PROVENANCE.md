@@ -55,6 +55,11 @@ These public upstream files were read to avoid guessing engine behavior:
   SHA-256 `7db100213953c20c04c55579503a4fe36e081472f363ca241f4a47e71e3931bb`.
 - ReAPI [5.29.0.358 headers](https://github.com/rehlds/ReAPI/tree/1c448d06e8c1cebaea061d6b81b94e85f6262649/reapi/extra/amxmodx/scripting/include)
   define `rg_round_end`, `m_bFreezePeriod`, `m_iJoiningState` and `JOINED`.
+- ReGameDLL_CS [`client.cpp`](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/client.cpp)
+  defines the BOOL `HandleMenu_ChooseTeam` hook (1811+) and routes legacy
+  `menuselect` (2924+) and direct `jointeam` (3403+) through it. False prevents
+  the choice from being handled. SHA-256
+  `d912b775263fb69b795ef6ac1daf03507fac4531e61a9fa6c593720d5bf95ac5`.
 
 These references inform implementation. They do not prove that an arbitrary
 customer/runtime installation matches the required versions; validate runtime

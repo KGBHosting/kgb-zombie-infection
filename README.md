@@ -1,7 +1,7 @@
 # KGB Zombie Infection
 
 An independent **classic infection** gamemode for Counter-Strike 1.6, using
-stock maps and assets. Version **0.1.0 is a development candidate**. Compiler and
+stock maps and assets. Version **0.1.1 is a development candidate**. Compiler and
 source checks do not prove live gameplay; see [TESTING.md](TESTING.md).
 
 Humans start together with an M4A1, USP, knife, 100 health and 50 armor. After a
@@ -17,6 +17,12 @@ Spectators stay spectators. Waiting for enough players is automatic; joins
 restart the preparation countdown without requiring an administrator. The HUD
 shows preparation/survival time and living role counts; `/zombie` explains the
 rules. Team switching is locked during infection, except switching to spectator.
+
+Version 0.1.1 enforces the active-round team lock at ReGameDLL's shared
+`HandleMenu_ChooseTeam` hook. Direct commands, VGUI and legacy text menus now
+reach the same decision; spectating stays allowed. Version 0.1.0's command-only
+lock could be bypassed through legacy `menuselect`; its immutable release is
+retained for provenance, and development installs should use 0.1.1.
 
 This is not Zombie Escape: there are no escape objectives, zombie classes,
 bosses, custom maps, models, sounds, shop/economy or FastDL dependencies.
