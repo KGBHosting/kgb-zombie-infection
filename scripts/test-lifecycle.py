@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Lifecycle specification and Pawn source contracts; NOT engine/gameplay tests.
+
+RoundSpecification is a deliberately small TEST DOUBLE used only in these tests.
+It describes expected outcomes, does not execute Pawn and does not emulate ReHLDS.
+"""
+from __future__ import annotations
+
+import itertools
+import pathlib
+import re
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SOURCE = (ROOT / "src/kgb_zombie_infection.sma").read_text()
+CONFIG = (ROOT / "configs/kgb_zombie_infection.cfg.example").read_text()
+
+
+class RoundSpecification:
+    """TEST DOUBLE of the expected round clock, not an engine implementation."""
+
+    def __init__(self) -> None:
+        self.phase = "waiting"
+        self.infection_at = 0
+        self.survival_until = 0
+        self.results: list[str] = []
+        self.respawns: dict[int, int] = {}
+
+    def tick(self, now: int, humans: int, participants: int) -> None:
+        if self.phase == "waiting" and humans >= 2:
+            self.phase, self.infection_at = "preparing", now + 15
+        elif self.phase == "preparing":
+            if humans < 2:
+                self.phase, self.infection_at = "waiting", 0
+            elif now >= self.infection_at:
+                self.phase, self.survival_until = "infected", now + 180
+        elif self.phase == "infected":
+            if humans == 0:
+                self.finish("zombies" if participants else "draw")
+            elif participants == humans or now >= self.survival_until:
+                self.finish("humans")
+
+    def finish(self, winner: str) -> None:
+        if self.phase == "infected":
+            self.phase = "ending"
+            self.respawns.clear()
+            self.results.append(winner)
+
+    def reset(self) -> None:
+        self.phase = "waiting"
+        self.infection_at = self.survival_until = 0
+        self.respawns.clear()
+
+
+def function_body(name: str) -> str:
+    match = re.search(rf"(?:public|stock)\s+(?:\w+:)?{name}\([^)]*\)\s*\{{", SOURCE)
+    if match is None:
+        raise AssertionError(f"Missing Pawn function {name}")
+    depth, cursor = 1, match.end()
+    while depth:
+        if SOURCE[cursor] == "{": depth += 1
+        elif SOURCE[cursor] == "}": depth -= 1
+        cursor += 1
+    return SOURCE[match.end():cursor - 1]
+
+
+class LifecycleSpecificationTests(unittest.TestCase):
+    def infected(self) -> RoundSpecification:
+        spec = RoundSpecification()
+        spec.tick(1, 2, 2)
+        spec.tick(16, 2, 2)
+        self.assertEqual("infected", spec.phase)
+        return spec
+
+    def test_joins_recover_waiting_without_manual_restart(self) -> None:
+        spec = RoundSpecification()
+        spec.tick(1, 1, 1)
+        self.assertEqual("waiting", spec.phase)
+        spec.tick(5, 2, 2)
+        self.assertEqual(("preparing", 20), (spec.phase, spec.infection_at))
+
+    def test_dropout_restarts_full_countdown(self) -> None:
+        spec = RoundSpecification()
+        spec.tick(1, 2, 2)
+        spec.tick(15, 1, 1)
+        spec.tick(16, 2, 2)
+        self.assertEqual(("preparing", 31), (spec.phase, spec.infection_at))
+
+    def test_living_roles_and_participant_matrix(self) -> None:
+        for humans, participants in itertools.product(range(4), repeat=2):
+            if humans > participants: continue
+            with self.subTest(humans=humans, participants=participants):
+                spec = self.infected()
+                spec.tick(20, humans, participants)
+                expected = (["zombies"] if participants else ["draw"]) if humans == 0 else (["humans"] if participants == humans else [])
+                self.assertEqual(expected, spec.results)
+
+    def test_dead_zombie_participant_prevents_early_human_win(self) -> None:
+        spec = self.infected()
+        spec.tick(20, humans=1, participants=2)
+        self.assertEqual([], spec.results)
+
+    def test_deadline_and_single_terminal_result(self) -> None:
+        spec = self.infected()
+        spec.respawns[7] = 200
+        spec.tick(195, 1, 2)
+        self.assertEqual([], spec.results)
+        spec.tick(196, 1, 2)
+        spec.tick(197, 0, 2)
+        spec.finish("zombies")
+        self.assertEqual(["humans"], spec.results)
+        self.assertEqual({}, spec.respawns)
+
+    def test_reset_discards_respawns_and_deadlines(self) -> None:
+        spec = self.infected()
+        spec.respawns[3] = 21
+        spec.reset()
+        spec.tick(21, 1, 1)
+        self.assertEqual(("waiting", {}, 0, 0), (spec.phase, spec.respawns, spec.infection_at, spec.survival_until))
+
+
+class PawnSafetyContractTests(unittest.TestCase):
+    def test_only_one_permanent_clock_no_player_or_round_tasks(self) -> None:
+        self.assertEqual(1, SOURCE.count("set_task("))
+        self.assertIn('set_task(1.0, "round_tick", TASK_TICK', function_body("plugin_cfg"))
+        self.assertNotIn("set_task(", function_body("on_new_round"))
+        self.assertNotIn("set_task(", function_body("on_player_killed_post"))
+
+    def test_native_objectives_fail_closed(self) -> None:
+        self.assertIn('get_cvar_pointer("mp_round_infinite")', function_body("plugin_cfg"))
+        self.assertIn("get_pcvar_num(pointer) != 1", function_body("plugin_cfg"))
+        self.assertIn('mp_round_infinite "1"', CONFIG)
+        self.assertIn('mp_forcerespawn "0"', CONFIG)
+        self.assertIn('mp_freeforall "0"', CONFIG)
+
+    def test_initial_infection_always_leaves_human(self) -> None:
+        body = function_body("begin_infection")
+        self.assertIn("player_count < 2", body)
+        self.assertIn("1, player_count - 1", body)
+        self.assertIn("random_num(0, index)", body)
+        self.assertIn("g_survival_until = now +", body)
+
+    def test_knife_infection_uses_verified_damage_contract(self) -> None:
+        body = function_body("on_take_damage_pre")
+        for contract in ("g_phase != INFECTED", "inflictor == attacker", "get_user_weapon(attacker) == CSW_KNIFE", "damage_bits & DMG_BULLET", "HAM_SUPERCEDE", "SetHamParamFloat(4, 0.0)"):
+            self.assertIn(contract, body)
+
+    def test_respawn_excludes_spectators_and_unfinished_joins(self) -> None:
+        self.assertIn("team == CS_TEAM_T || team == CS_TEAM_CT", function_body("is_participant"))
+        self.assertIn("g_departing[id]", function_body("is_participant"))
+        self.assertIn("m_iJoiningState) != JOINED", function_body("process_respawns"))
+        self.assertIn("ExecuteHamB(Ham_CS_RoundRespawn, id)", function_body("process_respawns"))
+        self.assertIn("g_respawn_at[id] = 0.0", function_body("client_disconnected"))
+        self.assertIn("g_departing[id] = false", function_body("client_putinserver"))
+
+    def test_outcomes_guard_before_engine_call(self) -> None:
+        body = function_body("finish_round")
+        self.assertLess(body.index("g_phase != INFECTED"), body.index("g_phase = ENDING"))
+        self.assertLess(body.index("g_phase = ENDING"), body.index("rg_round_end("))
+        self.assertLess(body.index("clear_respawns()"), body.index("rg_round_end("))
+        self.assertEqual(3, body.count("rg_round_end("))
+
+    def test_no_external_assets_or_escape_claim(self) -> None:
+        self.assertNotRegex(SOURCE, r"precache_(?:model|sound|generic)\s*\(")
+        self.assertIn('#define PLUGIN_NAME "KGB Zombie Infection"', SOURCE)
+        self.assertIn("SPDX-License-Identifier: GPL-3.0-or-later", SOURCE)
+        self.assertIn("GNU GENERAL PUBLIC LICENSE", (ROOT / "LICENSE").read_text())
+
+    def test_admin_cannot_skip_preparation_or_bypass_permissions(self) -> None:
+        body = function_body("command_admin_infect")
+        self.assertIn("cmd_access(id, level, cid, 2)", body)
+        self.assertIn("g_phase != INFECTED", body)
+        self.assertIn("CMDTARGET_ONLY_ALIVE", body)
+        self.assertNotIn("g_phase = INFECTED", body)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
