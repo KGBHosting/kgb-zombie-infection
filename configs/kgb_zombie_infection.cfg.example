@@ -17,7 +17,6 @@ mp_nadedrops "0"
 mp_infinite_ammo "2"
 mp_infinite_grenades "0"
 mp_refill_bpammo_weapons "0"
-mp_roundrespawn_time "-1"
 sv_maxspeed "350"
 
 kgb_zi_min_players "2"
