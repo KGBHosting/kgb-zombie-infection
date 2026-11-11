@@ -68,7 +68,7 @@ unrelated player names from evidence.
    map if supported; native objectives must never end an infection round.
 9. Verify `/zombie`, status HUD, allowed spectating, blocked active team changes,
    admin permission checks and active-only `amx_zi_infect`. During infection,
-   test direct `jointeam 1/2/5`, VGUI team choices, and legacy `_vgui_menus 0` ->
+   test direct `jointeam 1/2/5`, VGUI team choices, and legacy `setinfo _vgui_menus 0` ->
    `chooseteam` -> `menuselect 1/2/5`; all must preserve the active role/team.
    Spectator choice 6 must remain allowed in each path; spectators/late joins
    can join and become zombies. Repeat choices during preparation and after the
