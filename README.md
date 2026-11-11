@@ -1,13 +1,31 @@
 # KGB Zombie Infection
 
 An independent **classic infection** gamemode for Counter-Strike 1.6, using
-stock maps and assets. Version **0.1.3 is a development candidate**. Compiler and
+stock maps and assets. Version **0.2.0 is an unqualified experience candidate**. Compiler and
 source checks do not prove live gameplay; see [TESTING.md](TESTING.md).
 
-Humans start together with an M4A1, USP, knife, 100 health and 50 armor. After a
+Humans start together with an M4A1, USP, knife, 100 health and 50 armor. During
+waiting/preparation, a menu offers M4A1, AK47, MP5 Navy or M3, each with USP and
+knife. The automatic menu waits for team/class and other menus to close. Use
+`/guns` or `/weapons` to reopen it; one confirmed choice is allowed per round.
+Dismissing or ignoring it keeps the default M4A1. A preparation respawn keeps
+that round's selected loadout. Selections reset to M4A1 on each new round and
+on disconnect. Infection closes all weapon menus, including survivors' menus.
+Loadouts replace existing weapons and ammunition; manual weapon dropping is
+blocked. Choosing never heals or restores armor.
+
+The menu expires after 15 seconds and closes on the next one-second clock tick.
+Typing `/guns` after expiry also closes the old menu immediately and reopens it,
+without consuming a choice. A timeout never schedules another automatic menu.
+
+After a
 15 second preparation countdown, a shuffled 20% of the living players become
 zombies (at least one; always leave one human). Zombies have a knife, 3000 health,
-300 speed, reduced gravity and a green glow. A direct zombie knife hit converts
+300 speed, reduced gravity and a green glow. Stock night-vision goggles are
+available to zombies: press **N** (the standard `nightvision` binding) to toggle
+them. They start off and are removed on human conversion, death, round end/reset
+and disconnect. There are no custom vision effects or downloads.
+A direct zombie knife hit converts
 a human immediately. Humans must survive for three minutes; zombies win when
 no living humans remain. Killed players and late joins return as zombies after
 three seconds. Zombies keep respawning, so killing one does not end the round.
@@ -28,8 +46,11 @@ Version 0.1.1 introduced the active-round team lock at ReGameDLL's shared
 `HandleMenu_ChooseTeam` hook. Direct commands, VGUI and legacy text menus now
 reach the same decision; spectating stays allowed. Version 0.1.0's command-only
 lock could be bypassed through legacy `menuselect`; its immutable release is
-retained for provenance. Development installs should use 0.1.3; all previous
-release tags and files remain immutable.
+retained for provenance. Version 0.2.0 keeps the 0.1.3 engine fix; all previous
+release tags and files remain immutable. Existing 0.1.3 live qualifications do
+not qualify this candidate. Repeat the core matrix and the
+[experience acceptance checks](tests/live/EXPERIENCE-ACCEPTANCE.md) before changing
+any managed recipe pin.
 
 Version 0.1.3 fixes the team-lock hook's return type. ReGameDLL's `BOOL` is
 an integer; supplying ReAPI's distinct `ATYPE_BOOL` caused a native runtime
@@ -88,10 +109,16 @@ All defaults are in the example configuration. Values are bounded in code:
 | `human_health` | 100 | 1–1000 |
 | `human_armor` | 50 | 0–1000 |
 | `respawn_delay` | 3 seconds | 1–30 seconds, evaluated on a 1 second tick |
+| `weapon_menu` | 1 | 0 disables weapon selection; nonzero enables it |
+| `auto_weapon_menu` | 1 | 0 disables automatic opening; `/guns` still works if enabled |
+| `zombie_nightvision` | 1 | 0 disables grants; nonzero grants stock goggles on infection/spawn |
 
 `display_name` and `chat_prefix` control player-facing branding. Changing the
 preparation/survival duration takes effect on the next phase; role stats take
-effect on the next spawn/infection. There is no unsafe live enable/disable toggle.
+effect on the next spawn/infection. Night-vision grants take effect on the next
+infection/spawn; disabling the CVar does not revoke existing goggles mid-life.
+Set `weapon_menu` and `auto_weapon_menu` to 0 to retain the original automatic
+M4A1/USP loadout. There is no live enable/disable toggle for the core gamemode.
 
 ## Build and checks
 
@@ -120,5 +147,8 @@ deaths or infections and must be removed after the test.
 ## License
 
 GPL-3.0-or-later. Derived from the publicly available KGB Zombie Escape Core
-0.1.3, with attribution and provenance retained. No customer code, configuration
-or assets were consulted or copied. Valve game content is not redistributed.
+0.1.3, with attribution and provenance retained. Customer addon names informed
+feature selection only. No customer code, configuration or assets are reused or
+distributed. Version 0.2.0 is original code using documented public AMXX/ReAPI
+interfaces; see the pinned references in PROVENANCE.md. Valve game content is
+not redistributed.
