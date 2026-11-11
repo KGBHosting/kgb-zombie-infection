@@ -1,7 +1,7 @@
 # KGB Zombie Infection
 
 An independent **classic infection** gamemode for Counter-Strike 1.6, using
-stock maps and assets. Version **0.1.1 is a development candidate**. Compiler and
+stock maps and assets. Version **0.1.2 is a development candidate**. Compiler and
 source checks do not prove live gameplay; see [TESTING.md](TESTING.md).
 
 Humans start together with an M4A1, USP, knife, 100 health and 50 armor. After a
@@ -18,11 +18,18 @@ restart the preparation countdown without requiring an administrator. The HUD
 shows preparation/survival time and living role counts; `/zombie` explains the
 rules. Team switching is locked during infection, except switching to spectator.
 
-Version 0.1.1 enforces the active-round team lock at ReGameDLL's shared
+Version 0.1.2 awards exactly one scoreboard point to the winning side and
+broadcasts the updated team score before ending the round. The phase guard
+prevents repeated awards; drawn rounds do not add points. Earlier versions
+announced the winner without incrementing the scoreboard. Live score and
+next-round behavior still require the acceptance checks below.
+
+Version 0.1.1 introduced the active-round team lock at ReGameDLL's shared
 `HandleMenu_ChooseTeam` hook. Direct commands, VGUI and legacy text menus now
 reach the same decision; spectating stays allowed. Version 0.1.0's command-only
 lock could be bypassed through legacy `menuselect`; its immutable release is
-retained for provenance, and development installs should use 0.1.1.
+retained for provenance. Development installs should use 0.1.2; all previous
+release tags and files remain immutable.
 
 This is not Zombie Escape: there are no escape objectives, zombie classes,
 bosses, custom maps, models, sounds, shop/economy or FastDL dependencies.
@@ -95,6 +102,13 @@ The oldest supported compiler (1.9) produces the release artifact. The release
 workflow repeats both compiler checks and independent reproducibility, then
 publishes a clearly marked prerelease. Compiler caches and AMXX binaries are
 ignored in Git. [PROVENANCE.md](PROVENANCE.md) records sources and licenses.
+
+For controlled development testing, [tests/live/ACCEPTANCE.md](tests/live/ACCEPTANCE.md)
+provides a real Valve-client matrix and an optional, console-only stationary
+fake-client **test double**. Build it explicitly with
+`BUILD_COMPONENTS=acceptance-helper ./scripts/build.sh`; it is not included in
+the default build or runtime release assets. The helper never synthesizes damage,
+deaths or infections and must be removed after the test.
 
 ## License
 

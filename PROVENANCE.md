@@ -55,6 +55,16 @@ These public upstream files were read to avoid guessing engine behavior:
   SHA-256 `7db100213953c20c04c55579503a4fe36e081472f363ca241f4a47e71e3931bb`.
 - ReAPI [5.29.0.358 headers](https://github.com/rehlds/ReAPI/tree/1c448d06e8c1cebaea061d6b81b94e85f6262649/reapi/extra/amxmodx/scripting/include)
   define `rg_round_end`, `m_bFreezePeriod`, `m_iJoiningState` and `JOINED`.
+- ReAPI [`natives_misc.cpp` (459–535)](https://github.com/rehlds/ReAPI/blob/1c448d06e8c1cebaea061d6b81b94e85f6262649/reapi/src/natives/natives_misc.cpp#L459-L535):
+  `rg_round_end` calls `EndRoundMessage` and `TerminateRound`, without adding a
+  scoreboard point. `rg_update_teamscores` adds to the game-rules CT/T counters
+  and calls `UpdateTeamScores` to broadcast the display update. Version 0.1.2
+  explicitly awards the appropriate point once before termination. SHA-256
+  `c1a1d39fb9622b54ea1d1497f222638443739733b1c46c558f18080f62f0d16b`.
+- ReGameDLL_CS [`multiplay_gamerules.cpp` (1333–1393)](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/multiplay_gamerules.cpp#L1333-L1393):
+  the native win handlers perform their score increments separately from
+  `EndRoundMessage`/`TerminateRound`; draw does not increment. SHA-256
+  `3475593b32f99359aac0036d7f11ac52f88995633228da6b0490d36c745a736d`.
 - ReGameDLL_CS [`client.cpp`](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/client.cpp)
   defines the BOOL `HandleMenu_ChooseTeam` hook (1811+) and routes legacy
   `menuselect` (2924+) and direct `jointeam` (3403+) through it. False prevents
@@ -64,3 +74,19 @@ These public upstream files were read to avoid guessing engine behavior:
 These references inform implementation. They do not prove that an arbitrary
 customer/runtime installation matches the required versions; validate runtime
 identity and complete the development gameplay checklist before promotion.
+
+## Test-only instrumentation
+
+`tests/live/kgb_zi_acceptance_helper.sma` is first-party GPL-3.0-or-later test
+code. It is opt-in, is not shipped as a runtime release asset, and uses only
+stock engine fake clients as explicitly labeled test doubles. No customer data,
+custom assets or externally sourced code is included. Fake enrollment initializes
+the model/class and joining state that fake clients lack; the actual human
+completes the normal Valve join flow. Subsequent helpers never change a human's
+state or the product's role/loadout. Optional fake-only health setup is labeled
+in the output and cannot qualify default health behavior.
+
+AMXX's pinned [`CstrikeNatives.cpp`](https://github.com/alliedmodders/amxmodx/blob/13c14c008cd13ddaf053f6f61e22cc231fab93b7/modules/cstrike/cstrike/CstrikeNatives.cpp#L733-L751)
+validates ammo-bearing weapon IDs; the helper avoids asking reserve-ammo for a
+knife, which has no ammo index. File SHA-256
+`06ce269c1ffbf96caad1c0035c2e433d882c50d3efc2b7c11a6de894abaa09bd`.

@@ -15,6 +15,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = (ROOT / "src/kgb_zombie_infection.sma").read_text()
 CONFIG = (ROOT / "configs/kgb_zombie_infection.cfg.example").read_text()
+HELPER = (ROOT / "tests/live/kgb_zi_acceptance_helper.sma").read_text()
 
 
 class RoundSpecification:
@@ -53,16 +54,16 @@ class RoundSpecification:
         self.respawns.clear()
 
 
-def function_body(name: str) -> str:
-    match = re.search(rf"(?:public|stock)\s+(?:\w+:)?{name}\([^)]*\)\s*\{{", SOURCE)
+def function_body(name: str, source: str = SOURCE) -> str:
+    match = re.search(rf"(?:public|stock)\s+(?:\w+:)?{name}\([^)]*\)\s*\{{", source)
     if match is None:
         raise AssertionError(f"Missing Pawn function {name}")
     depth, cursor = 1, match.end()
     while depth:
-        if SOURCE[cursor] == "{": depth += 1
-        elif SOURCE[cursor] == "}": depth -= 1
+        if source[cursor] == "{": depth += 1
+        elif source[cursor] == "}": depth -= 1
         cursor += 1
-    return SOURCE[match.end():cursor - 1]
+    return source[match.end():cursor - 1]
 
 
 def engine_team_choice_blocked(phase: str, participant: bool, choice: int) -> bool:
@@ -214,6 +215,28 @@ class PawnSafetyContractTests(unittest.TestCase):
         self.assertLess(body.index("clear_respawns()"), body.index("rg_round_end("))
         self.assertEqual(3, body.count("rg_round_end("))
 
+    def test_winner_score_increment_is_guarded_and_precedes_termination(self) -> None:
+        body = function_body("finish_round")
+        self.assertEqual(2, body.count("rg_update_teamscores("))
+        for score_call, end_call in (
+            ("rg_update_teamscores(1, 0, true)", "rg_round_end(3.0, WINSTATUS_CTS, ROUND_CTS_WIN)"),
+            ("rg_update_teamscores(0, 1, true)", "rg_round_end(3.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN)"),
+        ):
+            self.assertLess(body.index("g_phase != INFECTED"), body.index("g_phase = ENDING"))
+            self.assertLess(body.index("g_phase = ENDING"), body.index(score_call))
+            self.assertLess(body.index("clear_respawns()"), body.index(score_call))
+            self.assertLess(body.index(score_call), body.index(end_call))
+        # Bind each increment to its actual winner branch. Draw must be scoreless.
+        cts, rest = body.split("else if (winner == WINSTATUS_TERRORISTS)", 1)
+        terrorists, draw = rest.split("else", 1)
+        self.assertIn("rg_update_teamscores(1, 0, true)", cts)
+        self.assertNotIn("rg_update_teamscores(0, 1, true)", cts)
+        self.assertIn("rg_update_teamscores(0, 1, true)", terrorists)
+        self.assertNotIn("rg_update_teamscores(1, 0, true)", terrorists)
+        self.assertNotIn("rg_update_teamscores(", draw)
+        self.assertIn("get_member_game(m_iNumCTWins)", body)
+        self.assertIn("get_member_game(m_iNumTerroristWins)", body)
+
     def test_no_external_assets_or_escape_claim(self) -> None:
         self.assertNotRegex(SOURCE, r"precache_(?:model|sound|generic)\s*\(")
         self.assertIn('#define PLUGIN_NAME "KGB Zombie Infection"', SOURCE)
@@ -226,6 +249,45 @@ class PawnSafetyContractTests(unittest.TestCase):
         self.assertIn("g_phase != INFECTED", body)
         self.assertIn("CMDTARGET_ONLY_ALIVE", body)
         self.assertNotIn("g_phase = INFECTED", body)
+
+
+class LiveHelperBoundaryContractTests(unittest.TestCase):
+    """Static boundaries only: these do NOT execute or qualify the live helper."""
+
+    def test_helper_is_console_only_and_excluded_from_runtime_release(self) -> None:
+        self.assertIn("DEVELOPMENT TEST INSTRUMENTATION ONLY", HELPER)
+        self.assertIn("TEST DOUBLES", HELPER)
+        self.assertEqual(7, HELPER.count('register_srvcmd("ziqa_'))
+        self.assertNotRegex(HELPER, r"register_(?:clcmd|concmd)\(")
+        self.assertIn('BUILD_COMPONENTS="${BUILD_COMPONENTS:-core}"', (ROOT / "scripts/build.sh").read_text())
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn('BUILD_COMPONENTS: "core acceptance-helper"', workflow)
+        self.assertNotIn("compiled/kgb_zi_acceptance_helper", workflow)
+
+    def test_mutating_commands_require_exact_owned_fake_identity(self) -> None:
+        guard = function_body("is_owned_fake", HELPER)
+        for contract in ("id >= 1", "id <= MaxClients", "is_user_connected(id)",
+                         "g_owned_userid[id] > 0", "get_user_userid(id) == g_owned_userid[id]", "FL_FAKECLIENT"):
+            self.assertIn(contract, guard)
+        for handler in ("command_place", "command_health", "kick_owned_fake", "on_frame"):
+            self.assertIn("is_owned_fake(", function_body(handler, HELPER))
+        enrollment = function_body("command_add", HELPER)
+        self.assertLess(enrollment.index("EngFunc_CreateFakeClient"), enrollment.index("g_owned_userid[id] = get_user_userid(id)"))
+        self.assertLess(enrollment.index("if (!is_owned_fake(id))"), enrollment.index("m_iJoiningState, JOINED"))
+        spawn = function_body("on_spawn_post", HELPER)
+        self.assertIn("get_user_userid(id) == g_spawn_userid[id]", spawn)
+        self.assertIn("g_owned_userid[id] == g_spawn_userid[id]", spawn)
+
+    def test_no_synthetic_damage_deaths_infections_or_human_state_writes(self) -> None:
+        self.assertNotRegex(HELPER, r"ExecuteHamB?\(Ham_(?:TakeDamage|Killed)")
+        self.assertNotRegex(HELPER, r"(?:message_begin|engfunc\(EngFunc_MessageBegin|write_byte|write_string)\(")
+        self.assertNotIn('server_cmd("amx_zi_infect', HELPER)
+        self.assertNotIn("SetHamParam", HELPER)
+        self.assertNotIn("SetHookChain", HELPER)
+        self.assertNotRegex(HELPER, r"(?:set_pev|set_member|set_user_\w+|cs_set_user_\w+|engclient_cmd)\(human\b")
+        # JOINED may be set only during guarded creation of a fake test double.
+        self.assertEqual(1, HELPER.count("m_iJoiningState, JOINED"))
+        self.assertIn("m_iJoiningState, JOINED", function_body("command_add", HELPER))
 
 
 if __name__ == "__main__":

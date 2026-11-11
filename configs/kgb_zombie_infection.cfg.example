@@ -1,4 +1,4 @@
-// KGB Zombie Infection 0.1.1 development candidate.
+// KGB Zombie Infection 0.1.2 development candidate.
 // Copy to addons/amxmodx/configs/kgb_zombie_infection.cfg.
 // Requires ReGameDLL_CS + ReAPI. No custom maps, models or sounds required.
 // The plugin exclusively owns round outcomes and respawns.

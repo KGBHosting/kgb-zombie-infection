@@ -22,7 +22,7 @@
 #include <reapi>
 
 #define PLUGIN_NAME "KGB Zombie Infection"
-#define PLUGIN_VERSION "0.1.1"
+#define PLUGIN_VERSION "0.1.2"
 #define PLUGIN_AUTHOR "KGB Hosting"
 #define TASK_TICK 72100
 
@@ -459,11 +459,15 @@ stock finish_round(WinStatus:winner)
     if (winner == WINSTATUS_CTS)
     {
         announce("Humans win! They survived the infection or all zombies left.")
+        // rg_round_end announces/terminates only; it does not award a point.
+        // The ENDING guard above owns this increment and the TeamScore update.
+        rg_update_teamscores(1, 0, true)
         rg_round_end(3.0, WINSTATUS_CTS, ROUND_CTS_WIN)
     }
     else if (winner == WINSTATUS_TERRORISTS)
     {
         announce("Zombies win! No living humans remain.")
+        rg_update_teamscores(0, 1, true)
         rg_round_end(3.0, WINSTATUS_TERRORISTS, ROUND_TERRORISTS_WIN)
     }
     else
@@ -471,7 +475,7 @@ stock finish_round(WinStatus:winner)
         announce("Round drawn: no players remain.")
         rg_round_end(3.0, WINSTATUS_DRAW, ROUND_END_DRAW)
     }
-    log_amx("[ZI] round_end winner=%d", winner)
+    log_amx("[ZI] round_end winner=%d ct_score=%d t_score=%d", winner, get_member_game(m_iNumCTWins), get_member_game(m_iNumTerroristWins))
 }
 
 stock clear_respawns()
