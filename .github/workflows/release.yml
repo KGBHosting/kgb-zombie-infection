@@ -40,7 +40,7 @@ jobs:
       - name: Compile plugin
         env:
           AMXX_VERSION: ${{ matrix.amxx-version }}
-          BUILD_COMPONENTS: "core acceptance-helper"
+          BUILD_COMPONENTS: "core acceptance-helper capacity-helper"
         run: ./scripts/build.sh
 
   build:

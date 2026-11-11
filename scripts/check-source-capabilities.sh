@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 "$ROOT_DIR/scripts/test-lifecycle.py"
+python3 "$ROOT_DIR/tests/live/capacity/test-extractor.py"
 if test -n "${VERSION_TAG:-}"; then
     expected_version="${VERSION_TAG#v}"
     test "$expected_version" != "$VERSION_TAG"

@@ -1,0 +1,61 @@
+{
+  "instrumentation": "development-test-only",
+  "revision": "r3",
+  "date": "2026-11-11",
+  "helper_source_sha256": "f8f86d7dfa6a72dfb4637407d2a27d46c2d6a0422dd954e5c5bd991e5e684f7a",
+  "helper_amxx19_sha256": "d25e3723e64cebd7b7d91059409104d202c52df0c6ca31e7142de9f41c7d30e1",
+  "human_valve_clients": 1,
+  "stationary_engine_fake_test_doubles": 31,
+  "acceptance_basis": "Settled naturally JOINED clients after native RestartRound; source/helper fake flags never authorize human writes. Independent strict participant/hull receipt validation.",
+  "per_map": [
+    {
+      "map": "zm_kgb_courtyard_v1",
+      "bsp_sha256": "cdff682e9ad03d6e29f7480950957079e6890f5181aac72f7ef75b3c9c59472e",
+      "connected": 32,
+      "joined": 32,
+      "alive_ct": 32,
+      "owned_test_doubles": 31,
+      "real_clients": 1,
+      "participants_with_native_spawns_this_round_1": 32,
+      "unique_actual_hull_origins": 32,
+      "ct_origins_exercised": 32,
+      "world_blocked": 0,
+      "positive_player_hull_overlap_pairs": 0
+    },
+    {
+      "map": "zm_kgb_depot_v1",
+      "bsp_sha256": "8bb6ad1ce88dc16dc370898471a7b5f694fc73b422b6e7a85e769e1e040464d0",
+      "connected": 32,
+      "joined": 32,
+      "alive_ct": 32,
+      "owned_test_doubles": 31,
+      "real_clients": 1,
+      "participants_with_native_spawns_this_round_1": 32,
+      "unique_actual_hull_origins": 32,
+      "ct_origins_exercised": 32,
+      "world_blocked": 0,
+      "positive_player_hull_overlap_pairs": 0
+    },
+    {
+      "map": "zm_kgb_containment_v1",
+      "bsp_sha256": "ef7003bf071e785618d5c3d835fbe7d9d4657a8b5a5071b49cc9df68c9a68322",
+      "connected": 32,
+      "joined": 32,
+      "alive_ct": 32,
+      "owned_test_doubles": 31,
+      "real_clients": 1,
+      "participants_with_native_spawns_this_round_1": 32,
+      "unique_actual_hull_origins": 32,
+      "ct_origins_exercised": 32,
+      "world_blocked": 0,
+      "positive_player_hull_overlap_pairs": 0
+    }
+  ],
+  "not_qualified": [
+    "32 genuine network clients",
+    "network performance",
+    "all movement routes",
+    "gameplay balance",
+    "operator cleanup"
+  ]
+}

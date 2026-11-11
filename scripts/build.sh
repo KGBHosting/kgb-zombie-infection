@@ -156,9 +156,10 @@ component_source() {
 	case "$1" in
 	core) printf '%s\n' 'src/kgb_zombie_infection.sma' ;;
 	acceptance-helper) printf '%s\n' 'tests/live/kgb_zi_acceptance_helper.sma' ;;
+	capacity-helper) printf '%s\n' 'tests/live/capacity/kgb_zi_capacity_helper.sma' ;;
 	*)
 			printf 'Unknown build component: %s\n' "$1" >&2
-			printf 'Supported components: core, acceptance-helper (test only)\n' >&2
+			printf 'Supported components: core, acceptance-helper, capacity-helper (helpers are test only)\n' >&2
 			exit 1
 			;;
 	esac

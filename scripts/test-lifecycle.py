@@ -265,8 +265,9 @@ class LiveHelperBoundaryContractTests(unittest.TestCase):
         self.assertNotRegex(HELPER, r"register_(?:clcmd|concmd)\(")
         self.assertIn('BUILD_COMPONENTS="${BUILD_COMPONENTS:-core}"', (ROOT / "scripts/build.sh").read_text())
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
-        self.assertIn('BUILD_COMPONENTS: "core acceptance-helper"', workflow)
+        self.assertIn('BUILD_COMPONENTS: "core acceptance-helper capacity-helper"', workflow)
         self.assertNotIn("compiled/kgb_zi_acceptance_helper", workflow)
+        self.assertNotIn("compiled/kgb_zi_capacity_helper", workflow)
 
     def test_native_client_connect_has_bounded_rejection_output(self) -> None:
         # Fakemeta DLLFunc_ClientConnect reads its sixth native argument as

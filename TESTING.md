@@ -36,6 +36,15 @@ CI compiles both the core and the opt-in test helper with both supported
 compilers. Runtime release assets contain only the core. The detailed controlled
 operator procedure is [tests/live/ACCEPTANCE.md](tests/live/ACCEPTANCE.md).
 
+The separate [capacity fixture](tests/live/capacity/README.md) uses naturally
+onboarded stationary engine fake test doubles. Its frozen r3 source passed
+controlled 32-slot spawn/hull qualification on all three original maps with one
+genuine Valve client and 31 fakes after native round reset. That is not 32 genuine
+network clients or performance evidence. Its strict numeric parser runs 199 local
+schema/identity controls plus 4 stdin/overflow controls and enforces 177-byte maximum
+source print messages. Both supported AMXX compilers include this opt-in helper;
+all helpers remain excluded from runtime release assets.
+
 ## Required development server + real client gates
 
 Use a dedicated development server and legally provisioned Valve CS1.6 client.
