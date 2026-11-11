@@ -1,6 +1,6 @@
 # Development verification
 
-Version 0.1.3 is an explicitly development-only candidate. Do not advertise it
+Version 0.2.0 is an explicitly development-only experience candidate. Do not advertise it
 as production-ready until the live gates below have evidence.
 
 ## Local gates
@@ -29,7 +29,16 @@ actual winning branch increments only its own score after the ending guard and
 before termination; the draw branch cannot increment. Four static helper checks
 cover console-only access, fake ownership guards and the absence of synthetic
 damage/deaths or human state writes, plus the bounded rejection-buffer
-argument required by Fakemeta ClientConnect. These 21 total checks do not execute engine
+argument required by Fakemeta ClientConnect. Eight additional tests evaluate the
+actual 0.2.0 choice predicate across 1024 phase/role/state combinations and four
+invalid slot bounds; the callback predicate across 32 userid/round/state/expiry
+combinations; and source contracts for menu cleanup, stock NVG state and inventory
+replacement. The timeout regression checks the actual expiry predicate just
+before/at the deadline while waiting alone, clock and manual-command cleanup
+ordering, continued manual eligibility, and the consumed automatic-opening
+request. Four deliberate negative source mutations remove the repeat-choice,
+infection deadline, zombie and menu-expiry guards and must expose invalid grants.
+These 29 total tests do not execute engine
 menus, round scoring, fake clients or client gameplay.
 
 CI compiles both the core and the opt-in test helper with both supported
@@ -46,6 +55,11 @@ source print messages. Both supported AMXX compilers include this opt-in helper;
 all helpers remain excluded from runtime release assets.
 
 ## Required development server + real client gates
+
+The 0.2.0 menu/NVG candidate has not passed live acceptance. Prior 0.1.3 gameplay
+or map qualification does not qualify this source/artifact. Repeat this matrix
+and [EXPERIENCE-ACCEPTANCE.md](tests/live/EXPERIENCE-ACCEPTANCE.md), recording both
+successful and untested cases against the exact candidate hashes.
 
 Use a dedicated development server and legally provisioned Valve CS1.6 client.
 Reserve the test server explicitly; never reuse a customer's server or copy its
