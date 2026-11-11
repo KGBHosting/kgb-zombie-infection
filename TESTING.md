@@ -1,6 +1,6 @@
 # Development verification
 
-Version 0.1.2 is an explicitly development-only candidate. Do not advertise it
+Version 0.1.3 is an explicitly development-only candidate. Do not advertise it
 as production-ready until the live gates below have evidence.
 
 ## Local gates
@@ -21,7 +21,10 @@ release artifact can be reproduced from the checked-in source and pinned tools.
 The team-choice regression checks evaluate the actual Pawn guard's restricted
 boolean expression across 80 phase/participant/menu-choice combinations, with an
 explicit test-only participant stub. Separate source contracts require the shared
-engine pre-hook and its false BOOL/supercede return. A score contract checks each
+engine pre-hook and its exact integer-zero/supercede return. Engine `BOOL` is
+not ReAPI's distinct `ATYPE_BOOL`; using the latter compiled but raised a
+real native runtime error in 0.1.2. A negative-control run of the regression
+check rejects that old call. A score contract checks each
 actual winning branch increments only its own score after the ending guard and
 before termination; the draw branch cannot increment. Three static helper checks
 cover console-only access, fake ownership guards and the absence of synthetic
