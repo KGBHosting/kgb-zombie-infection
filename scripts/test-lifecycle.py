@@ -268,6 +268,16 @@ class LiveHelperBoundaryContractTests(unittest.TestCase):
         self.assertIn('BUILD_COMPONENTS: "core acceptance-helper"', workflow)
         self.assertNotIn("compiled/kgb_zi_acceptance_helper", workflow)
 
+    def test_native_client_connect_has_bounded_rejection_output(self) -> None:
+        # Fakemeta DLLFunc_ClientConnect reads its sixth native argument as
+        # reject-buffer capacity. Missing it makes variadic native access
+        # undefined even when the game DLL accepts the connection.
+        body = function_body("command_add", HELPER)
+        calls = re.findall(r'dllfunc\(DLLFunc_ClientConnect,\s*(.*?)\)\s*\n', body)
+        self.assertEqual(1, len(calls))
+        self.assertRegex(calls[0], r'^id,\s*name,\s*"127\.0\.0\.1",\s*reject,\s*charsmax\(reject\)$')
+        self.assertRegex(body, r'\breject\[128\]')
+
     def test_mutating_commands_require_exact_owned_fake_identity(self) -> None:
         guard = function_body("is_owned_fake", HELPER)
         for contract in ("id >= 1", "id <= MaxClients", "is_user_connected(id)",

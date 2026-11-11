@@ -82,6 +82,13 @@ calls infection internals, applies `Ham_TakeDamage`/`Ham_Killed`, sends a
 DeathMsg, or changes a real client's state. One-time fake class initialization
 does not qualify real-client onboarding or player model rendering.
 
+The fake-only DLL ClientConnect call supplies `charsmax(reject)` explicitly.
+Fakemeta reads that sixth native argument as the rejection-output capacity:
+[official implementation](https://github.com/alliedmodders/amxmodx/blob/844eebd471635c197f5f4fffb71c2ea0628310fd/modules/fakemeta/dllfunc.cpp#L115-L126).
+The rejection text is never logged. Instrumentation built before this correction
+must be replaced and affected acceptance observations repeated; successful
+connection alone does not validate a missing variadic argument.
+
 Actual Valve-client primary/secondary attacks, actual engine damage/death,
 spawn events, TeamScore messages and game-rule scores are observed. A logged
 attack alone is not proof that a target was hit. Match damage/conversion/death

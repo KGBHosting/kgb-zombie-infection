@@ -106,7 +106,7 @@ public command_add()
         // Only the just-created engine fake client is initialized here. The
         // actual human must complete Valve's team/class/Join state naturally.
         engfunc(EngFunc_FreeEntPrivateData, id)
-        dllfunc(DLLFunc_ClientConnect, id, name, "127.0.0.1", reject)
+        dllfunc(DLLFunc_ClientConnect, id, name, "127.0.0.1", reject, charsmax(reject))
         dllfunc(DLLFunc_ClientPutInServer, id)
         set_pev(id, pev_flags, pev(id, pev_flags) | FL_FAKECLIENT | FL_FROZEN)
         g_owned_userid[id] = get_user_userid(id)

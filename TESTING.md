@@ -26,9 +26,10 @@ not ReAPI's distinct `ATYPE_BOOL`; using the latter compiled but raised a
 real native runtime error in 0.1.2. A negative-control run of the regression
 check rejects that old call. A score contract checks each
 actual winning branch increments only its own score after the ending guard and
-before termination; the draw branch cannot increment. Three static helper checks
+before termination; the draw branch cannot increment. Four static helper checks
 cover console-only access, fake ownership guards and the absence of synthetic
-damage/deaths or human state writes. These 20 total checks do not execute engine
+damage/deaths or human state writes, plus the bounded rejection-buffer
+argument required by Fakemeta ClientConnect. These 21 total checks do not execute engine
 menus, round scoring, fake clients or client gameplay.
 
 CI compiles both the core and the opt-in test helper with both supported
