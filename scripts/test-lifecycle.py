@@ -162,17 +162,21 @@ class PawnSafetyContractTests(unittest.TestCase):
                 expected = phase == "infected" and participant and choice != 6
                 self.assertEqual(expected, engine_team_choice_blocked(phase, participant, choice))
 
-    def test_team_lock_hooks_shared_engine_path_and_returns_false(self) -> None:
+    def test_team_lock_hooks_shared_engine_path_and_returns_engine_integer_zero(self) -> None:
         init = function_body("plugin_init")
         self.assertIn('RegisterHookChain(RG_HandleMenu_ChooseTeam, "on_choose_team_pre", false)', init)
         self.assertNotIn('register_clcmd("jointeam"', init)
         self.assertNotIn("public command_jointeam(", SOURCE)
         body = function_body("on_choose_team_pre")
         self.assertIn("slot != MenuChoose_Spec", body)
-        self.assertIn("SetHookChainReturn(ATYPE_BOOL, false)", body)
+        self.assertIn("SetHookChainReturn(ATYPE_INTEGER, 0)", body)
+        # ReGameDLL BOOL is typedef int, not C++ bool. ReAPI checks the exact
+        # runtime type; a compiling ATYPE_BOOL call throws native error 10.
+        self.assertNotRegex(body, r"SetHookChainReturn\(\s*ATYPE_BOOL\b")
+        self.assertEqual(1, body.count("SetHookChainReturn("))
         self.assertIn("return HC_SUPERCEDE", body)
         self.assertIn("return HC_CONTINUE", body)
-        self.assertLess(body.index("SetHookChainReturn(ATYPE_BOOL, false)"), body.index("return HC_SUPERCEDE"))
+        self.assertLess(body.index("SetHookChainReturn(ATYPE_INTEGER, 0)"), body.index("return HC_SUPERCEDE"))
         self.assertLess(body.index("return HC_SUPERCEDE"), body.index("return HC_CONTINUE"))
 
     def test_only_one_permanent_clock_no_player_or_round_tasks(self) -> None:

@@ -71,6 +71,15 @@ These public upstream files were read to avoid guessing engine behavior:
   the choice from being handled. SHA-256
   `d912b775263fb69b795ef6ac1daf03507fac4531e61a9fa6c593720d5bf95ac5`.
 
+- ReAPI [`hook_callback.cpp`](https://github.com/rehlds/ReAPI/blob/1c448d06e8c1cebaea061d6b81b94e85f6262649/reapi/src/hook_callback.cpp)
+  dispatches `HandleMenu_ChooseTeam` with `callForward<BOOL>`. ReGameDLL's
+  engine `BOOL` is an integer, so the ReAPI return-type contract is
+  `ATYPE_INTEGER`, not the distinct C++-boolean `ATYPE_BOOL`. A real development
+  client team-choice attempt on 0.1.2 exposed native error 10 from
+  `SetHookChainReturn`, with expected `ATYPE_INTEGER` / supplied `ATYPE_BOOL`.
+  Version 0.1.3 returns integer zero before `HC_SUPERCEDE`; compiler success
+  alone cannot catch or qualify this runtime contract.
+
 These references inform implementation. They do not prove that an arbitrary
 customer/runtime installation matches the required versions; validate runtime
 identity and complete the development gameplay checklist before promotion.

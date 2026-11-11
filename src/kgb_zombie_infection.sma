@@ -22,7 +22,7 @@
 #include <reapi>
 
 #define PLUGIN_NAME "KGB Zombie Infection"
-#define PLUGIN_VERSION "0.1.2"
+#define PLUGIN_VERSION "0.1.3"
 #define PLUGIN_AUTHOR "KGB Hosting"
 #define TASK_TICK 72100
 
@@ -327,7 +327,8 @@ public on_choose_team_pre(id, MenuChooseTeam:slot)
     if (g_phase == INFECTED && is_participant(id) && slot != MenuChoose_Spec)
     {
         client_print(id, print_chat, "Use /zombie for the rules. Team changes resume next round; you can still spectate.")
-        SetHookChainReturn(ATYPE_BOOL, false)
+        // Engine BOOL is typedef int: ReAPI rejects ATYPE_BOOL for this hook.
+        SetHookChainReturn(ATYPE_INTEGER, 0)
         return HC_SUPERCEDE
     }
     return HC_CONTINUE

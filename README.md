@@ -1,7 +1,7 @@
 # KGB Zombie Infection
 
 An independent **classic infection** gamemode for Counter-Strike 1.6, using
-stock maps and assets. Version **0.1.2 is a development candidate**. Compiler and
+stock maps and assets. Version **0.1.3 is a development candidate**. Compiler and
 source checks do not prove live gameplay; see [TESTING.md](TESTING.md).
 
 Humans start together with an M4A1, USP, knife, 100 health and 50 armor. After a
@@ -28,8 +28,15 @@ Version 0.1.1 introduced the active-round team lock at ReGameDLL's shared
 `HandleMenu_ChooseTeam` hook. Direct commands, VGUI and legacy text menus now
 reach the same decision; spectating stays allowed. Version 0.1.0's command-only
 lock could be bypassed through legacy `menuselect`; its immutable release is
-retained for provenance. Development installs should use 0.1.2; all previous
+retained for provenance. Development installs should use 0.1.3; all previous
 release tags and files remain immutable.
+
+Version 0.1.3 fixes the team-lock hook's return type. ReGameDLL's `BOOL` is
+an integer; supplying ReAPI's distinct `ATYPE_BOOL` caused a native runtime
+error in 0.1.1/0.1.2 when an active participant chose a team. The hook now
+returns `ATYPE_INTEGER, 0` before superseding the choice. Static/compiler
+checks cannot qualify the live command/menu paths; repeat those cases with
+the real Valve client before enabling the Reinstall option.
 
 This is not Zombie Escape: there are no escape objectives, zombie classes,
 bosses, custom maps, models, sounds, shop/economy or FastDL dependencies.
