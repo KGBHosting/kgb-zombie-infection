@@ -614,7 +614,7 @@ stock bool:remember_weapon_choice()
 stock bool:client_has_menu(id)
 {
     new old_menu, new_menu
-    // AMXX cannot see the engine's team/class VGUI menu: check both APIs.
+    // Check native team/class state alongside AMXX's tracked menu IDs.
     return get_member(id, m_iMenu) != Menu_OFF || player_menu_info(id, old_menu, new_menu) != 0
 }
 
