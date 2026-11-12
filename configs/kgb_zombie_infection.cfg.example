@@ -1,4 +1,4 @@
-// KGB Zombie Infection 0.2.0 experience candidate (requires fresh live QA).
+// KGB Zombie Infection 0.2.1 balanced upgrade candidate (requires fresh live QA).
 // Copy to addons/amxmodx/configs/kgb_zombie_infection.cfg.
 // Requires ReGameDLL_CS + ReAPI. No custom maps, models or sounds required.
 // The plugin exclusively owns round outcomes and respawns.
@@ -33,6 +33,9 @@ kgb_zi_respawn_delay "3.0"
 // Keep both at 0 for the original automatic M4A1/USP loadout without a menu.
 kgb_zi_weapon_menu "1"
 kgb_zi_auto_weapon_menu "1"
+// Keep the last confirmed primary across rounds for this connection only.
+// 0 restores M4A1 each new round; preparation respawns still keep that round's choice.
+kgb_zi_remember_weapons "1"
 // Grants stock goggles; N toggles vision. No custom effect/assets.
 kgb_zi_zombie_nightvision "1"
 kgb_zi_display_name "Zombie Infection"

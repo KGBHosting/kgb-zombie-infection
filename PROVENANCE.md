@@ -1,7 +1,7 @@
 # Public provenance and distribution
 
 Customer addon names were inspected read-only for feature inspiration. No
-customer code, configuration or assets are reused or distributed. The 0.2.0
+customer code, configuration or assets are reused or distributed. The 0.2.x
 night-vision and weapon-menu implementation is original code using the public
 upstream contracts below. No Valve content or third-party custom maps/models/sounds are bundled.
 The operator supplies the legally provisioned stock Counter-Strike game files.
@@ -126,6 +126,32 @@ Public visibility alone is not permission to redistribute code or custom
 assets. No Zombie Plague fork, customer plugin or external weapon/menu addon is
 bundled. The candidate does not implement Zombie Plague's `zp_*` API and cannot
 load its dependent classes, shops, grenades or custom weapons as drop-ins.
+
+## Version 0.2.1 observer cleanup and remembered preference
+
+The remembered weapon preference is original GPL-3.0-or-later code in this
+repository. It is held in a player-slot array only for the current connection,
+reset on both disconnect and native client entry, with the existing userid,
+round and deadline checks guarding callbacks. No account identifiers, customer
+settings, persistent database, new package or external addon is used.
+
+The observer cleanup uses the same pinned public ReGameDLL commit above:
+
+- [`player.cpp`, `IsObservingPlayer` (10367–10375)](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/player.cpp#L10367-L10375)
+  defines the first-person mode and exact `pev->iuser2` target relation.
+  SHA-256 `806c06790054ee1aad008e7f65fc47d709d9460e30ec58c3e165a800f1332ec7`.
+- [`client.cpp`, native `nightvision` (3447–3514)](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/client.cpp#L3447-L3514)
+  clears or enables the active flag and `NVGToggle` message for the player and
+  matching first-person observers. Its SHA-256 is recorded above. The candidate
+  leaves normal toggling to this path and mirrors only the off-state cleanup.
+- [`observer.cpp`, `UpdateClientEffects`](https://github.com/rehlds/ReGameDLL_CS/blob/70307312cde05cec5d73a3d3a384b4bdac3d5fe2/regamedll/dlls/observer.cpp#L50-L138)
+  synchronizes the effect when observer mode/target changes. Its SHA-256 is
+  `eb95ecec7b2bbf40e9c5dbe448aac2e0da07236fe6ef933365797cb07d0df81e`.
+
+These are API/behavior references, not copied third-party addon code. No upstream
+implementation or assets are included. Engine source review identifies why
+manual target-only cleanup is insufficient as a general observer contract;
+it does not claim a reproduced live observer defect or qualify the new cleanup.
 
 ## Test-only instrumentation
 

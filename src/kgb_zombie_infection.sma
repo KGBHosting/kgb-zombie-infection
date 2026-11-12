@@ -22,7 +22,7 @@
 #include <reapi>
 
 #define PLUGIN_NAME "KGB Zombie Infection"
-#define PLUGIN_VERSION "0.2.0"
+#define PLUGIN_VERSION "0.2.1"
 #define PLUGIN_AUTHOR "KGB Hosting"
 #define TASK_TICK 72100
 #define NO_WEAPON_MENU -1
@@ -30,6 +30,7 @@
 
 new const HUMAN_WEAPONS[][] = { "weapon_m4a1", "weapon_ak47", "weapon_mp5navy", "weapon_m3" }
 new const HUMAN_WEAPON_NAMES[][] = { "M4A1 - balanced rifle", "AK47 - powerful rifle", "MP5 Navy - light SMG", "M3 - close-range shotgun" }
+new const HUMAN_WEAPON_LABELS[][] = { "M4A1", "AK47", "MP5 Navy", "M3" }
 new const HUMAN_WEAPON_IDS[] = { CSW_M4A1, CSW_AK47, CSW_MP5NAVY, CSW_M3 }
 new const HUMAN_WEAPON_AMMO[] = { 90, 90, 120, 32 }
 
@@ -50,7 +51,7 @@ new g_cvar_min_players, g_cvar_infection_delay, g_cvar_survival_time
 new g_cvar_zombie_ratio, g_cvar_zombie_health, g_cvar_zombie_speed, g_cvar_zombie_gravity
 new g_cvar_human_health, g_cvar_human_armor, g_cvar_respawn_delay
 new g_cvar_display_name, g_cvar_chat_prefix
-new g_cvar_weapon_menu, g_cvar_auto_weapon_menu, g_cvar_zombie_nvg
+new g_cvar_weapon_menu, g_cvar_auto_weapon_menu, g_cvar_zombie_nvg, g_cvar_remember_weapons
 
 public plugin_init()
 {
@@ -70,6 +71,7 @@ public plugin_init()
     g_cvar_weapon_menu = register_cvar("kgb_zi_weapon_menu", "1")
     g_cvar_auto_weapon_menu = register_cvar("kgb_zi_auto_weapon_menu", "1")
     g_cvar_zombie_nvg = register_cvar("kgb_zi_zombie_nightvision", "1")
+    g_cvar_remember_weapons = register_cvar("kgb_zi_remember_weapons", "1")
 
     register_event("HLTV", "on_new_round", "a", "1=0", "2=0")
     register_event("CurWeapon", "on_current_weapon", "be", "1=1")
@@ -158,7 +160,9 @@ public on_new_round()
         clear_nightvision(id)
         g_is_zombie[id] = false
         g_respawn_at[id] = 0.0
-        g_weapon_choice[id] = 0
+        // A preference belongs only to this connection, never a saved identity.
+        // Disabling menus restores the original default at the next round too.
+        if (!remember_weapon_choice()) g_weapon_choice[id] = 0
         g_weapon_selected[id] = false
     }
 }
@@ -443,6 +447,11 @@ stock make_human(id)
     cs_set_user_armor(id, clamp(get_pcvar_num(g_cvar_human_armor), 0, 1000), CS_ARMOR_VESTHELM)
     set_user_gravity(id, 1.0)
     set_user_rendering(id)
+    if (get_pcvar_num(g_cvar_weapon_menu) && !is_user_bot(id))
+    {
+        new choice = clamp(g_weapon_choice[id], 0, sizeof HUMAN_WEAPONS - 1)
+        client_print(id, print_chat, "[Zombie Infection] %s + USP/knife. Type /guns to change once this round, before infection.", HUMAN_WEAPON_LABELS[choice])
+    }
     if (get_pcvar_num(g_cvar_auto_weapon_menu) && !g_weapon_selected[id] && !is_user_bot(id))
     {
         // Serviced by the existing clock, guarded by this exact client userid.
@@ -546,8 +555,28 @@ stock clear_respawns()
 
 stock clear_nightvision(id)
 {
-    if (!is_user_connected(id)) return
-    cs_set_user_nvg(id, 0)
+    if (is_user_connected(id))
+    {
+        cs_set_user_nvg(id, 0)
+        clear_nightvision_effect(id)
+    }
+    // Match the native nightvision-off observer path. A target's death or
+    // disconnect can require cleanup even if its own active flag is already off.
+    for (new observer = 1; observer <= g_max_players; observer++)
+    {
+        if (is_nightvision_observer(observer, id)) clear_nightvision_effect(observer)
+    }
+}
+
+stock bool:is_nightvision_observer(observer, target)
+{
+    return observer >= 1 && observer <= g_max_players && observer != target
+        && is_user_connected(observer) && !is_user_hltv(observer)
+        && pev(observer, pev_iuser1) == OBS_IN_EYE && pev(observer, pev_iuser2) == target
+}
+
+stock clear_nightvision_effect(id)
+{
     // cs_set_user_nvg changes ownership only, not the active client effect.
     if (get_member(id, m_bNightVisionOn))
     {
@@ -575,6 +604,11 @@ stock bool:can_choose_weapon(id)
         && (g_phase != PREPARING || get_gametime() < g_infection_at)
         && get_member(id, m_iJoiningState) == JOINED && !g_weapon_selected[id]
         && get_pcvar_num(g_cvar_weapon_menu) != 0
+}
+
+stock bool:remember_weapon_choice()
+{
+    return get_pcvar_num(g_cvar_remember_weapons) != 0 && get_pcvar_num(g_cvar_weapon_menu) != 0
 }
 
 stock bool:client_has_menu(id)
@@ -639,8 +673,10 @@ stock show_weapon_menu(id)
 {
     if (!can_choose_weapon(id) || client_has_menu(id)) return
     close_weapon_menu(id)
-    new menu = menu_create("Human weapons^nUSP + knife included | Choose once this round", "on_weapon_selected")
-    for (new choice = 0; choice < sizeof HUMAN_WEAPONS; choice++)
+    new title[160], choice = clamp(g_weapon_choice[id], 0, sizeof HUMAN_WEAPONS - 1)
+    formatex(title, charsmax(title), "Human weapons | Current: %s^nUSP + knife included | Choose once this round", HUMAN_WEAPON_LABELS[choice])
+    new menu = menu_create(title, "on_weapon_selected")
+    for (choice = 0; choice < sizeof HUMAN_WEAPONS; choice++)
     {
         new value[4]
         num_to_str(choice, value, charsmax(value))
@@ -658,7 +694,7 @@ public on_weapon_selected(id, menu, item)
 {
     // Cancellation can call this synchronously from close_weapon_menu. Only the
     // current owner destroys the resource; an old callback cannot grant items.
-    if (menu != g_weapon_menu[id]) return PLUGIN_HANDLED
+    if (id < 1 || id > g_max_players || menu != g_weapon_menu[id]) return PLUGIN_HANDLED
     new bool:valid = weapon_menu_current(id, get_gametime()) && can_choose_weapon(id)
     new choice = -1
     if (valid && item >= 0 && item < sizeof HUMAN_WEAPONS)
@@ -674,7 +710,8 @@ public on_weapon_selected(id, menu, item)
     g_weapon_selected[id] = true
     g_weapon_choice[id] = choice
     give_human_loadout(id)
-    client_print(id, print_chat, "[Zombie Infection] Loadout selected. Your next choice is available next round.")
+    if (remember_weapon_choice()) client_print(id, print_chat, "[Zombie Infection] %s selected and remembered until you leave. You can change again next round.", HUMAN_WEAPON_LABELS[choice])
+    else client_print(id, print_chat, "[Zombie Infection] %s selected for this round. You can change again next round.", HUMAN_WEAPON_LABELS[choice])
     return PLUGIN_HANDLED
 }
 
