@@ -196,7 +196,7 @@ public round_tick()
         }
         g_phase = PREPARING
         g_infection_at = now + floatclamp(get_pcvar_float(g_cvar_infection_delay), 3.0, 120.0)
-        announce("Infection begins in %.0f seconds. Survive together; zombies infect with their knife.", g_infection_at - now)
+        announce("Infection in %.0f seconds. Prepare together.", g_infection_at - now)
     }
     else if (g_phase == PREPARING)
     {
@@ -204,7 +204,7 @@ public round_tick()
         {
             g_phase = WAITING
             g_infection_at = 0.0
-            announce("Waiting for more players. The preparation countdown will restart.")
+            announce("Waiting for players. Preparation will restart.")
         }
         else if (now >= g_infection_at)
         {
@@ -263,7 +263,7 @@ stock begin_infection(Float:now)
     {
         make_zombie(players[index], 0)
     }
-    announce("%d initial zombie%s! Humans win by surviving %.0f seconds; zombies win by infecting every human.", initial, initial == 1 ? "" : "s", g_survival_until - now)
+    announce("%d initial zombie%s! Humans must survive %.0f seconds.", initial, initial == 1 ? "" : "s", g_survival_until - now)
     log_amx("[ZI] infection_started humans=%d zombies=%d duration=%.0f", player_count - initial, initial, g_survival_until - now)
 }
 
@@ -377,7 +377,7 @@ public on_choose_team_pre(id, MenuChooseTeam:slot)
 {
     if (g_phase == INFECTED && is_participant(id) && slot != MenuChoose_Spec)
     {
-        client_print(id, print_chat, "Use /zombie for the rules. Team changes resume next round; you can still spectate.")
+        client_print(id, print_chat, "Team locked until next round. You may spectate. Rules: /zombie")
         // Engine BOOL is typedef int: ReAPI rejects ATYPE_BOOL for this hook.
         SetHookChainReturn(ATYPE_INTEGER, 0)
         return HC_SUPERCEDE
@@ -394,9 +394,11 @@ public command_player_status(id)
     new humans, zombies, participants, prefix[48]
     count_roles(humans, zombies, participants)
     get_pcvar_string(g_cvar_chat_prefix, prefix, charsmax(prefix))
-    client_print(id, print_chat, "%s Humans survive until time runs out. Zombies infect with their knife and respawn after death. Late joins become zombies.", prefix)
-    client_print(id, print_chat, "%s Humans alive: %d | Zombies alive: %d | Your role: %s", prefix, humans, zombies, !is_participant(id) ? "spectator" : (g_is_zombie[id] ? "zombie" : "human"))
-    client_print(id, print_chat, "%s Before infection: /guns chooses a primary once per round (USP + knife included). Zombies: N toggles night vision.", prefix)
+    client_print(id, print_chat, "%s Humans survive the timer. Zombie knife hits infect.", prefix)
+    client_print(id, print_chat, "%s Zombies respawn after death. Late joins become zombies.", prefix)
+    client_print(id, print_chat, "%s Alive: %d humans, %d zombies. You are %s.", prefix, humans, zombies, !is_participant(id) ? "spectator" : (g_is_zombie[id] ? "zombie" : "human"))
+    client_print(id, print_chat, "%s /guns: choose once per round, before infection.", prefix)
+    client_print(id, print_chat, "%s Primary + USP/knife. Zombies: N toggles night vision.", prefix)
     return PLUGIN_HANDLED
 }
 
@@ -450,7 +452,7 @@ stock make_human(id)
     if (get_pcvar_num(g_cvar_weapon_menu) && !is_user_bot(id))
     {
         new choice = clamp(g_weapon_choice[id], 0, sizeof HUMAN_WEAPONS - 1)
-        client_print(id, print_chat, "[Zombie Infection] %s + USP/knife. Type /guns to change once this round, before infection.", HUMAN_WEAPON_LABELS[choice])
+        client_print(id, print_chat, "[Zombie Infection] %s + USP/knife. Type /guns once, before infection.", HUMAN_WEAPON_LABELS[choice])
     }
     if (get_pcvar_num(g_cvar_auto_weapon_menu) && !g_weapon_selected[id] && !is_user_bot(id))
     {
@@ -477,11 +479,11 @@ stock make_zombie(id, infector)
     {
         // Ownership only: stock nightvision/N handles toggling and observers.
         cs_set_user_nvg(id, 1)
-        client_print(id, print_chat, "[Zombie Infection] Press N to toggle zombie night vision.")
+        client_print(id, print_chat, "[Zombie Infection] Press N for night vision.")
     }
     if (infector > 0)
     {
-        announce("A human has been infected! Humans remaining must survive together.")
+        announce("A human is infected! Survivors must stay alive.")
     }
 }
 
@@ -528,7 +530,7 @@ stock finish_round(WinStatus:winner)
     ClearSyncHud(0, g_hud)
     if (winner == WINSTATUS_CTS)
     {
-        announce("Humans win! They survived the infection or all zombies left.")
+        announce("Humans win! The timer ended or all zombies left.")
         // rg_round_end announces/terminates only; it does not award a point.
         // The ENDING guard above owns this increment and the TeamScore update.
         rg_update_teamscores(1, 0, true)
@@ -655,7 +657,7 @@ public command_weapon_menu(id)
 {
     if (!can_choose_weapon(id))
     {
-        client_print(id, print_chat, "[Zombie Infection] Choose once per round while alive and human, before infection begins.")
+        client_print(id, print_chat, "[Zombie Infection] /guns: alive humans pick once per round, before infection.")
         return PLUGIN_HANDLED
     }
     // A command can arrive after the deadline but before the next clock tick.
@@ -710,8 +712,8 @@ public on_weapon_selected(id, menu, item)
     g_weapon_selected[id] = true
     g_weapon_choice[id] = choice
     give_human_loadout(id)
-    if (remember_weapon_choice()) client_print(id, print_chat, "[Zombie Infection] %s selected and remembered until you leave. You can change again next round.", HUMAN_WEAPON_LABELS[choice])
-    else client_print(id, print_chat, "[Zombie Infection] %s selected for this round. You can change again next round.", HUMAN_WEAPON_LABELS[choice])
+    if (remember_weapon_choice()) client_print(id, print_chat, "[Zombie Infection] %s remembered until you leave. Change next round.", HUMAN_WEAPON_LABELS[choice])
+    else client_print(id, print_chat, "[Zombie Infection] %s chosen. You can change next round.", HUMAN_WEAPON_LABELS[choice])
     return PLUGIN_HANDLED
 }
 
