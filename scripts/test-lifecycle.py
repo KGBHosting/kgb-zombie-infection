@@ -305,5 +305,302 @@ class LiveHelperBoundaryContractTests(unittest.TestCase):
         self.assertIn("m_iJoiningState, JOINED", function_body("command_add", HELPER))
 
 
+def evaluate_experience_predicate(predicate: str, values: dict) -> bool:
+    """Evaluate real Pawn boolean expressions using explicit test-only natives.
+
+    This checks guard decision tables, never AMXX menu dispatch or engine state.
+    Only a restricted AST is allowed; calls can access only supplied test doubles.
+    """
+    predicate = re.sub(r"!(?!=)", " not ", predicate).replace("&&", " and ").replace("||", " or ")
+    tree = ast.parse(" ".join(predicate.split()), mode="eval")
+    allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
+               ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.Gt, ast.GtE, ast.LtE,
+               ast.Name, ast.Load, ast.Call, ast.Constant, ast.Subscript)
+    if any(not isinstance(node, allowed) for node in ast.walk(tree)):
+        raise AssertionError("Unsupported expression in actual Pawn experience guard")
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    if names - values.keys():
+        raise AssertionError(f"Unexpected names in actual Pawn experience guard: {names - values.keys()}")
+    return bool(eval(compile(tree, "<Pawn experience guard>", "eval"), {"__builtins__": {}}, values))
+
+
+def can_choose_actual(*, phase="preparing", participant=True, alive=True,
+                      zombie=False, ct=True, joined=True, selected=False,
+                      enabled=True, now=10, deadline=15, client=1,
+                      source=SOURCE) -> bool:
+    body = function_body("can_choose_weapon", source)
+    predicate = body.split("return", 1)[1].strip()
+    return evaluate_experience_predicate(predicate, {
+        "id": client, "g_max_players": 32,
+        "is_participant": lambda _: participant,  # Explicit TEST DOUBLES.
+        "is_user_alive": lambda _: alive,
+        "g_is_zombie": {client: zombie}, "cs_get_user_team": lambda _: ct,
+        "CS_TEAM_CT": True, "g_phase": phase, "WAITING": "waiting",
+        "PREPARING": "preparing", "get_gametime": lambda: now,
+        "g_infection_at": deadline, "get_member": lambda *_: joined,
+        "m_iJoiningState": "joining", "JOINED": True,
+        "g_weapon_selected": {client: selected},
+        "get_pcvar_num": lambda _: int(enabled), "g_cvar_weapon_menu": "enabled",
+    })
+
+
+def menu_current_actual(*, same_userid=True, same_round=True, now=10, expires=15, source=SOURCE) -> bool:
+    predicate = function_body("weapon_menu_current", source).split("return", 1)[1].strip()
+    return evaluate_experience_predicate(predicate, {
+        "id": 1, "g_menu_userid": {1: 100 if same_userid else 99},
+        "get_user_userid": lambda _: 100, "g_menu_round": {1: 5 if same_round else 4},
+        "g_round_serial": 5, "now": now, "g_menu_expires_at": {1: expires},
+    })
+
+
+def remember_choice_actual(*, remember=1, enabled=1, source=SOURCE) -> bool:
+    predicate = function_body("remember_weapon_choice", source).split("return", 1)[1].strip()
+    flags = {"remember": remember, "enabled": enabled}
+    return evaluate_experience_predicate(predicate, {
+        "get_pcvar_num": lambda cvar: flags[cvar],  # Explicit TEST DOUBLE.
+        "g_cvar_remember_weapons": "remember", "g_cvar_weapon_menu": "enabled",
+    })
+
+
+def memory_assignments_actual(state: dict, event: str, *, remember=1, enabled=1,
+                              choice=0, source=SOURCE) -> dict:
+    """Apply actual Pawn preference/used assignments, not engine callbacks.
+
+    TEST DOUBLE only: ignores unrelated player/engine operations and does not
+    qualify callback dispatch. Unsupported memory writes fail the test parser.
+    """
+    result = state.copy()
+    for line in function_body(event, source).splitlines():
+        if not re.search(r"g_weapon_(?:choice|selected)\[id\]\s*=", line):
+            continue
+        match = re.fullmatch(r"\s*(?:if \((.+)\) )?g_weapon_(choice|selected)\[id\] = (0|true|false|choice)\s*", line)
+        if match is None:
+            raise AssertionError("Unsupported actual Pawn memory assignment")
+        condition, field, value = match.groups()
+        if condition and not evaluate_experience_predicate(condition, {
+            "remember_weapon_choice": lambda: remember_choice_actual(remember=remember, enabled=enabled, source=source),
+        }):
+            continue
+        result[field] = {"0": 0, "true": True, "false": False, "choice": choice}[value]
+    return result
+
+
+def nvg_observer_actual(*, client=2, connected=True, hltv=False, mode=4,
+                        target=1, followed=1, source=SOURCE) -> bool:
+    predicate = function_body("is_nightvision_observer", source).split("return", 1)[1].strip()
+    return evaluate_experience_predicate(predicate, {
+        "observer": client, "target": target, "g_max_players": 32,
+        "is_user_connected": lambda _: connected, "is_user_hltv": lambda _: hltv,
+        "pev": lambda _, field: mode if field == "mode" else followed,
+        "pev_iuser1": "mode", "pev_iuser2": "followed", "OBS_IN_EYE": 4,
+    })
+
+
+class ExperienceGuardTests(unittest.TestCase):
+    """Source contracts/decision tables only, not client-visible acceptance."""
+
+    def test_actual_choice_guard_all_phase_role_and_client_states(self) -> None:
+        for phase, participant, alive, zombie, ct, joined, selected, enabled, expired in itertools.product(
+            ("waiting", "preparing", "infected", "ending"), *[(False, True)] * 8
+        ):
+            arguments = dict(phase=phase, participant=participant, alive=alive,
+                             zombie=zombie, ct=ct, joined=joined, selected=selected,
+                             enabled=enabled, now=15 if expired else 14, deadline=15)
+            expected = (participant and alive and not zombie and ct and joined and not selected and enabled
+                        and (phase == "waiting" or (phase == "preparing" and not expired)))
+            with self.subTest(**arguments):
+                self.assertEqual(expected, can_choose_actual(**arguments))
+        for client in (-1, 0, 33, 99):
+            self.assertFalse(can_choose_actual(client=client))
+
+    def test_negative_controls_reject_repeated_choice_and_deadline_regressions(self) -> None:
+        for fragment, arguments in (
+            (" && !g_weapon_selected[id]", {"selected": True}),
+            ("&& (g_phase != PREPARING || get_gametime() < g_infection_at)", {"now": 15}),
+            ("&& !g_is_zombie[id]", {"zombie": True}),
+        ):
+            body = function_body("can_choose_weapon")
+            self.assertIn(fragment, body)
+            mutated = SOURCE.replace(body, body.replace(fragment, "", 1), 1)
+            self.assertFalse(can_choose_actual(**arguments))
+            self.assertTrue(can_choose_actual(source=mutated, **arguments), "Negative control did not exercise the removed guard")
+
+    def test_actual_callback_guard_denies_stale_userid_round_state_and_expiry(self) -> None:
+        body = function_body("on_weapon_selected")
+        predicate = re.search(r"new bool:valid = ([^\n]+)", body).group(1)
+        for same_userid, same_round, eligible, now in itertools.product((False, True), (False, True), (False, True), (0, 14.999, 15, 15.001)):
+            self.assertEqual(same_userid and same_round and eligible and now < 15, evaluate_experience_predicate(predicate, {
+                "id": 1, "get_gametime": lambda: now,
+                "weapon_menu_current": lambda _, time: menu_current_actual(same_userid=same_userid, same_round=same_round, now=time),
+                "can_choose_weapon": lambda _: eligible,  # Explicit test-only native/state doubles.
+            }))
+        self.assertFalse(menu_current_actual(expires=0))
+        self.assertIn("if (id < 1 || id > g_max_players || menu != g_weapon_menu[id]) return PLUGIN_HANDLED", body)
+        self.assertLess(body.index("if (!valid || choice < 0"), body.index("g_weapon_selected[id] = true"))
+        self.assertLess(body.index("g_weapon_selected[id] = true"), body.index("give_human_loadout(id)"))
+        self.assertNotIn("make_human(", body)  # Menu must never heal/rearmor a player.
+
+    def test_timeout_closes_menu_on_clock_allows_manual_reopen_and_does_not_auto_reopen(self) -> None:
+        """Evaluate real expiry/auto predicates; UI calls remain test-only doubles.
+
+        This deliberately covers WAITING (one player), where phase transition
+        cannot incidentally remove the old menu and hide the original defect.
+        """
+        expiry = function_body("expire_weapon_menu")
+        predicate = re.search(r"if \((.+)\) close_weapon_menu\(id\)", expiry).group(1)
+        menu = {1: 7}  # TEST DOUBLE of the current AMXX resource, not a menu engine.
+        for now, expected_close in ((14.999, False), (15, True)):
+            should_close = evaluate_experience_predicate(predicate, {
+                "id": 1, "g_weapon_menu": menu, "NO_WEAPON_MENU": -1, "now": now,
+                "weapon_menu_current": lambda _, time: menu_current_actual(now=time),
+            })
+            self.assertEqual(expected_close, should_close)
+        process = function_body("process_weapon_menus")
+        auto_predicate = re.search(r"if \((g_menu_at\[id\].+)\) continue", process).group(1)
+        close = function_body("close_weapon_menu")
+        self.assertIn("g_menu_at[id] = 0.0", close)
+        self.assertIn("g_menu_expires_at[id] = 0.0", close)
+        self.assertNotIn("g_weapon_selected[id] = true", close)
+        # Closing consumes no choice and schedules no automatic re-opening.
+        self.assertTrue(evaluate_experience_predicate(auto_predicate, {"id": 1, "g_menu_at": {1: 0.0}, "now": 16}))
+        self.assertTrue(can_choose_actual(phase="waiting", now=16))
+        self.assertLess(process.index("expire_weapon_menu(id, now)"), process.index("if (g_menu_at[id] == 0.0"))
+        command = function_body("command_weapon_menu")
+        self.assertLess(command.index("expire_weapon_menu(id, get_gametime())"), command.index("if (client_has_menu(id))"))
+        self.assertLess(command.index("if (client_has_menu(id))"), command.index("show_weapon_menu(id)"))
+        show = function_body("show_weapon_menu")
+        self.assertLess(show.index("close_weapon_menu(id)"), show.index("g_menu_expires_at[id] = get_gametime() + float(WEAPON_MENU_SECONDS)"))
+        self.assertIn("#define WEAPON_MENU_SECONDS 15", SOURCE)
+        self.assertIn("menu_display(id, menu, 0, WEAPON_MENU_SECONDS)", show)
+        # Negative control: removing the actual expiry guard permits late input.
+        body = function_body("weapon_menu_current")
+        mutated = SOURCE.replace(body, body.replace(" && now < g_menu_expires_at[id]", "", 1), 1)
+        self.assertFalse(menu_current_actual(now=15))
+        self.assertTrue(menu_current_actual(now=15, source=mutated))
+
+    def test_auto_menu_uses_single_clock_and_does_not_override_join_or_other_menus(self) -> None:
+        self.assertEqual(1, SOURCE.count("set_task("))
+        self.assertIn("process_weapon_menus(now)", function_body("round_tick"))
+        process = function_body("process_weapon_menus")
+        self.assertIn("g_pending_userid[id] != get_user_userid(id)", process)
+        self.assertIn("!can_choose_weapon(id)", process)
+        self.assertIn("if (!client_has_menu(id)) show_weapon_menu(id)", process)
+        other_menu = function_body("client_has_menu")
+        self.assertIn("m_iMenu) != Menu_OFF", other_menu)
+        self.assertIn("player_menu_info(id, old_menu, new_menu) != 0", other_menu)
+        self.assertIn("g_pending_userid[id] = get_user_userid(id)", function_body("make_human"))
+        self.assertIn("is_user_bot(id)", function_body("make_human"))
+
+    def test_menu_cleanup_invalidates_owner_before_synchronous_callback(self) -> None:
+        body = function_body("close_weapon_menu")
+        self.assertLess(body.index("g_weapon_menu[id] = NO_WEAPON_MENU"), body.index("menu_cancel(id)"))
+        self.assertIn("active_menu == menu", body)
+        self.assertLess(body.index("active_menu == menu"), body.index("show_menu(id, 0,"))
+        self.assertEqual(1, body.count("menu_destroy(menu)"))
+        for name in ("client_putinserver", "client_disconnected", "on_new_round", "make_human", "make_zombie", "on_player_killed_post", "begin_infection"):
+            self.assertIn("close_weapon_menu(", function_body(name))
+        for name in ("on_round_end", "finish_round", "plugin_end"):
+            self.assertIn("clear_round_experience()", function_body(name))
+
+    def test_replaces_loadout_and_prevents_drop_or_menu_ammo_farming(self) -> None:
+        init = function_body("plugin_init")
+        self.assertIn('register_clcmd("drop", "command_block_buy")', init)
+        body = function_body("give_human_loadout")
+        self.assertLess(body.index("strip_user_weapons(id)"), body.index("give_item("))
+        self.assertIn("cs_set_user_bpammo(id, HUMAN_WEAPON_IDS[index], 0)", body)
+        self.assertIn("cs_set_user_bpammo(id, HUMAN_WEAPON_IDS[choice], HUMAN_WEAPON_AMMO[choice])", body)
+        self.assertIn("if (!remember_weapon_choice()) g_weapon_choice[id] = 0", function_body("on_new_round"))
+        for name in ("client_putinserver", "client_disconnected", "on_new_round"):
+            self.assertIn("g_weapon_selected[id] = false", function_body(name))
+        self.assertNotIn("g_weapon_selected[id] = false", function_body("on_player_killed_post"))
+
+    def test_nvg_grants_stock_ownership_and_clears_both_effect_and_engine_flag(self) -> None:
+        self.assertIn("cs_set_user_nvg(id, 1)", function_body("make_zombie"))
+        self.assertNotIn("m_bNightVisionOn, true", SOURCE)
+        self.assertIn("cs_set_user_nvg(id, 0)", function_body("clear_nightvision"))
+        clear = function_body("clear_nightvision_effect")
+        for fragment in ("set_member(id, m_bNightVisionOn, false)", "g_nvg_message", "write_byte(0)"):
+            self.assertIn(fragment, clear)
+        for name in ("make_human", "make_zombie", "client_disconnected", "on_new_round", "on_player_killed_post", "clear_round_experience"):
+            self.assertIn("clear_nightvision(", function_body(name))
+        self.assertNotRegex(SOURCE, r'register_clcmd\("(?:nightvision|n)"')
+        self.assertNotRegex(SOURCE, r"precache_(?:model|sound|generic)\s*\(")
+
+    def test_remembered_primary_round_respawn_and_connection_boundaries(self) -> None:
+        for remember, enabled, primary in itertools.product((-1, 0, 1), (-1, 0, 1), range(4)):
+            expected_remember = remember != 0 and enabled != 0
+            self.assertEqual(expected_remember, remember_choice_actual(remember=remember, enabled=enabled))
+            state = {"choice": primary, "selected": True}
+            for event in ("on_player_killed_post", "make_human", "make_zombie", "clear_round_experience", "finish_round"):
+                self.assertEqual(state, memory_assignments_actual(state, event, remember=remember, enabled=enabled))
+            self.assertEqual({"choice": primary if expected_remember else 0, "selected": False},
+                             memory_assignments_actual(state, "on_new_round", remember=remember, enabled=enabled))
+            for event in ("client_disconnected", "client_putinserver"):
+                self.assertEqual({"choice": 0, "selected": False}, memory_assignments_actual(state, event))
+            self.assertEqual({"choice": primary, "selected": True},
+                             memory_assignments_actual({"choice": 0, "selected": False}, "on_weapon_selected", choice=primary))
+        # A normal next-round spawn uses the retained primary; only a new explicit
+        # accepted callback consumes that round's replacement opportunity.
+        self.assertIn("give_human_loadout(id)", function_body("make_human"))
+        self.assertIn("g_weapon_choice[id]", function_body("give_human_loadout"))
+        self.assertIn('register_cvar("kgb_zi_remember_weapons", "1")', function_body("plugin_init"))
+        self.assertIn('kgb_zi_remember_weapons "1"', CONFIG)
+        self.assertNotRegex(SOURCE, r"(?:nvault_|fvault_|SQL_|get_user_authid|set_user_info)\s*\(")
+
+    def test_memory_negative_controls_catch_round_and_slot_leaks(self) -> None:
+        state = {"choice": 3, "selected": True}
+        for original, replacement, event, arguments in (
+            ("if (!remember_weapon_choice()) g_weapon_choice[id] = 0", "g_weapon_choice[id] = 0", "on_new_round", {}),
+            ("if (!remember_weapon_choice()) g_weapon_choice[id] = 0", "if (remember_weapon_choice()) g_weapon_choice[id] = 0", "on_new_round", {}),
+            ("g_weapon_choice[id] = 0", "", "client_disconnected", {}),
+            ("g_weapon_choice[id] = 0", "", "client_putinserver", {}),
+        ):
+            body = function_body(event)
+            mutated = SOURCE.replace(body, body.replace(original, replacement, 1), 1)
+            self.assertNotEqual(memory_assignments_actual(state, event, **arguments),
+                                memory_assignments_actual(state, event, source=mutated, **arguments))
+        for guard, arguments in (("get_pcvar_num(g_cvar_remember_weapons) != 0 && ", {"remember": 0}),
+                                 (" && get_pcvar_num(g_cvar_weapon_menu) != 0", {"enabled": 0})):
+            body = function_body("remember_weapon_choice")
+            self.assertIn(guard, body)
+            mutated = SOURCE.replace(body, body.replace(guard, "", 1), 1)
+            self.assertFalse(remember_choice_actual(**arguments))
+            self.assertTrue(remember_choice_actual(source=mutated, **arguments))
+
+    def test_nvg_cleanup_targets_only_native_first_person_followers(self) -> None:
+        for client, connected, hltv, mode, followed in itertools.product(
+            (1, 2), (False, True), (False, True), (0, 1, 2, 4, 5, 6), (1, 3)
+        ):
+            self.assertEqual(client != 1 and connected and not hltv and mode == 4 and followed == 1,
+                             nvg_observer_actual(client=client, connected=connected, hltv=hltv, mode=mode, followed=followed))
+        for client in (-1, 0, 33, 99):
+            self.assertFalse(nvg_observer_actual(client=client))
+        cleanup = function_body("clear_nightvision")
+        # The observer loop is outside the connected-target block, so an already
+        # cleared/departed target cannot strand its exact in-eye followers.
+        self.assertRegex(cleanup, r"clear_nightvision_effect\(id\)\s*\}\s*//[\s\S]*?for \(new observer")
+        self.assertIn("if (is_nightvision_observer(observer, id)) clear_nightvision_effect(observer)", cleanup)
+        self.assertNotIn("cs_set_user_nvg(", function_body("clear_nightvision_effect"))
+        for fragment, arguments in (
+            ("&& pev(observer, pev_iuser1) == OBS_IN_EYE ", {"mode": 1}),
+            ("&& pev(observer, pev_iuser2) == target", {"followed": 3}),
+            (" && !is_user_hltv(observer)", {"hltv": True}),
+        ):
+            body = function_body("is_nightvision_observer")
+            self.assertIn(fragment, body)
+            mutated = SOURCE.replace(body, body.replace(fragment, "", 1), 1)
+            self.assertFalse(nvg_observer_actual(**arguments))
+            self.assertTrue(nvg_observer_actual(source=mutated, **arguments))
+
+    def test_player_hints_name_current_loadout_and_keep_native_nvg_dispatch(self) -> None:
+        self.assertIn("HUMAN_WEAPON_LABELS[choice]", function_body("make_human"))
+        self.assertIn("Type /guns", function_body("make_human"))
+        self.assertIn("Current: %s", function_body("show_weapon_menu"))
+        self.assertIn("remembered until you leave", function_body("on_weapon_selected"))
+        self.assertIn("Press N", function_body("make_zombie"))
+        self.assertIn("/guns", function_body("command_player_status"))
+        self.assertNotRegex(SOURCE, r'register_clcmd\("nightvision"')
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
